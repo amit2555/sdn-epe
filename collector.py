@@ -2,6 +2,7 @@
 
 from automation import tasks
 from multiprocessing import Process
+from utils import sub_connect
 import time
 import json
 import zmq
@@ -45,10 +46,7 @@ def main():
     port = 5001
     instances = dict()
     previous_devices = list()
-    ctx = zmq.Context()
-    sock = ctx.socket(zmq.SUB)
-    sock.bind('tcp://127.0.0.1:5000')
-    sock.setsockopt(zmq.SUBSCRIBE, '')
+    sock = sub_connect(5000)
 
     while True:
         if sock.poll(100):

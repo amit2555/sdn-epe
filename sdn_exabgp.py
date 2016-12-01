@@ -1,25 +1,17 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 
-from collections import defaultdict
 import json
 import zmq
 import sys
 import select
-
-
-def connect_to_socket(port):
-    """Connect to a socket on a unique port."""
-
-    c = zmq.Context()
-    s = c.socket(zmq.PUB)
-    s.connect('tcp://127.0.0.1:' + str(port))
-    return s
+from collections import defaultdict
+from utils import pub_bind
 
 
 asbr_info = defaultdict(dict)
 nlri = 'ipv4 nlri-mpls'
-device_producer = connect_to_socket(5000) 
-update_producer = connect_to_socket(6000) 
+device_producer = pub_bind(5000) 
+update_producer = pub_bind(6000) 
 inputs = [sys.stdin]
 
 while True:
@@ -75,4 +67,3 @@ while True:
         # Connect to elasticsearch and find top-talkers in last 5 mins.
         pass
     '''
-        

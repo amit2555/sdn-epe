@@ -1,74 +1,111 @@
 #!/usr/bin/env python
 
-from automation.auto_operations.helpers import interface_expand
-from collections import defaultdict
-from pprint import pprint as pp
-import time
-import json
-import zmq
+from utils import sub_bind, sub_connect
+import logging
 
 
-def bind_to_socket(port):
-    """Bind to a socket on a unique port."""
+logger = logging.getLogger('Controller')
+logging.basicConfig(level=logging.DEBUG)
 
-    c = zmq.Context()
-    s = c.socket(zmq.SUB)
-    s.bind('tcp://127.0.0.1:' + str(port))
-    s.setsockopt(zmq.SUBSCRIBE, '')
-    return s
+
+class ASBRPrefix(object):
+    NLRI = 'ipv4 nlri-mpls'
+
+    def __init__(self, asbr):
+        self.asbr = asbr
+        self.status = None 
+        self.prefixes = dict()
+
+    def update_status(self, status):
+        self.status = status
+
+    def prefix_announced(self, bgp_update):
+        """Update Prefixes announced in BGP Update."""
+
+        attributes = bgp_update['attribute']
+
+        for nexthop in bgp_update['announce'][ASBRPrefix.NLRI]: 
+            for prefix in bgp_update['announce'][ASBRPrefix.NLRI][nexthop]:
+                self.prefixes[prefix] = self.prefixes.get(prefix, {})
+                self.prefixes[prefix].update({
+                            'nexthop':nexthop,
+                            'labels': bgp_update['announce'][ASBRPrefix.NLRI][nexthop][prefix]['label'],
+                            'attributes': attributes})
+        logger.debug(self.prefixes)
+
+
+    def prefix_withdrawn(self, bgp_update):
+        """Remove Prefixes withdrawn in BGP Update."""
+
+        for prefix in bgp_update['withdraw'][ASBRPrefix.NLRI]:
+            self.prefixes.pop(prefix)
+
+
+    def prefix_mpls_update(self, data):
+        """Update Prefixes' MPLS data from Collector."""
+
+        for elem in data:
+            if self.prefixes.get(elem['prefix']):
+                self.prefixes[elem['prefix']].update({'interface':elem['interface']})
+
+
+    def prefix_interface_update(self, data):
+        """Update Prefixes' Interface data from Collector."""
+
+        for elem in data:
+            for prefix in self.prefixes:
+                if elem['name'] == self.prefixes[prefix].get('interface'):
+                    self.prefixes[prefix].update({'input_util':elem['input_util'],
+                                                  'output_util':elem['output_util']})
+        logger.debug(self.prefixes)
 
 
 def main():
 
-    repository = defaultdict(dict)
-    nlri = 'ipv4 nlri-mpls'
+    instances = dict()
+
+    # Socket used to pull device, status from Exabgp 
+    device_puller = sub_connect(5000)
 
     # Socket used to collect data from Collector
-    collector = bind_to_socket(5001)
+    collector = sub_bind(5001)
+
     # Socket used to collect BGP Updates from Exabgp
-    update_puller = bind_to_socket(6000)
+    update_puller = sub_connect(6000)
 
     while True:
+        if device_puller.poll(100):
+            device = device_puller.recv_json()
+            asbr_name, status = device['name'], device['status']
+
+            if not instances.get(asbr_name):
+                instances[asbr_name] = ASBRPrefix(asbr_name)
+            instances[asbr_name].update_status(status)
+
         if collector.poll(100):
             msg = collector.recv_json()
             asbr_name = msg['name']
 
-            if msg['type'] == 'mpls':
-                for elem in msg['data']:
-                    if elem['prefix'] in repository[asbr_name]:
-                        repository[asbr_name][elem['prefix']].update(
-                                             {'interface':interface_expand(elem['interface'])})
+            if instances.get(asbr_name):
+                if msg['type'] == 'mpls':
+                    instances[asbr_name].prefix_mpls_update(msg['data'])
 
-            if msg['type'] == 'util':
-                for elem in msg['data']:
-                    for prefix in repository[asbr_name]:
-                        if elem['name'] == repository[asbr_name][prefix]['interface']:
-                            repository[asbr_name][prefix].update(
-                                                      {'input_util':elem['input_util'],
-                                                       'output_util':elem['output_util']})
-            pp(repository)
-
+                if msg['type'] == 'util':
+                    instances[asbr_name].prefix_interface_update(msg['data'])
 
         if update_puller.poll(100):
             msg = update_puller.recv_json()
-            #print msg
             asbr_name = msg['ip']
             bgp_update = msg['message']['update']
 
-            if 'announce' in bgp_update:
-                for nexthop in bgp_update['announce'][nlri]:
-                    for prefix in bgp_update['announce'][nlri][nexthop]:
-                        repository[asbr_name][prefix] = bgp_update['announce'][nlri][nexthop][prefix]
-                        repository[asbr_name][prefix].update({'nexthop':nexthop, 'attributes':bgp_update['attribute']})
-                                                     
-            if 'withdraw' in bgp_update:
-                for prefix in bgp_update['withdraw'][nlri]:
-                    repository[asbr_name].pop(prefix) 
+            if instances.get(asbr_name):
+                if 'announce' in bgp_update:
+                    instances[asbr_name].prefix_announced(bgp_update)
 
+                if 'withdraw' in bgp_update:
+                    instances[asbr_name].prefix_withdrawn(bgp_update)
 
- 
 
 if __name__ == "__main__":
     main()
 
- 
