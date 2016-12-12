@@ -5,7 +5,7 @@ import zmq
 import sys
 import select
 from collections import defaultdict
-from utils import pub_bind
+from utilities.utils import pub_bind
 
 
 asbr_info = defaultdict(dict)

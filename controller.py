@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from utils import sub_bind, sub_connect
+from utilities.utils import sub_bind, sub_connect
 import logging
 
 
@@ -20,29 +20,27 @@ class ASBRPrefix(object):
         self.status = status
 
     def prefix_announced(self, bgp_update):
-        """Update Prefixes announced in BGP Update."""
-
-        attributes = bgp_update['attribute']
+        """Update BGP-LU Prefixes announced in BGP Update."""
 
         for nexthop in bgp_update['announce'][ASBRPrefix.NLRI]: 
             for prefix in bgp_update['announce'][ASBRPrefix.NLRI][nexthop]:
                 self.prefixes[prefix] = self.prefixes.get(prefix, {})
                 self.prefixes[prefix].update({
                             'nexthop':nexthop,
-                            'labels': bgp_update['announce'][ASBRPrefix.NLRI][nexthop][prefix]['label'],
-                            'attributes': attributes})
+                            'labels': bgp_update['announce'][ASBRPrefix.NLRI][nexthop][prefix]['label']})
+                self.prefixes[prefix].update(bgp_update['attribute'])
         logger.debug(self.prefixes)
 
 
     def prefix_withdrawn(self, bgp_update):
-        """Remove Prefixes withdrawn in BGP Update."""
+        """Remove BGP-LU Prefixes withdrawn in BGP Update."""
 
         for prefix in bgp_update['withdraw'][ASBRPrefix.NLRI]:
             self.prefixes.pop(prefix)
 
 
     def prefix_mpls_update(self, data):
-        """Update Prefixes' MPLS data from Collector."""
+        """Update BGP-LU Prefixes' MPLS data from Collector."""
 
         for elem in data:
             if self.prefixes.get(elem['prefix']):
@@ -50,7 +48,7 @@ class ASBRPrefix(object):
 
 
     def prefix_interface_update(self, data):
-        """Update Prefixes' Interface data from Collector."""
+        """Update BGP-LU Prefixes' Interface data from Collector."""
 
         for elem in data:
             for prefix in self.prefixes:

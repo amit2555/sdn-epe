@@ -2,7 +2,7 @@
 
 from automation import tasks
 from multiprocessing import Process
-from utils import sub_connect
+from utilities.utils import sub_connect
 import time
 import json
 import zmq
@@ -51,8 +51,6 @@ def main():
     while True:
         if sock.poll(100):
             device = sock.recv_json()
-            print device
-            #name, port, status = device['name'], device['port'], device['status']
             name, status = device['name'], device['status']
 
             if status == 'up':
@@ -66,7 +64,6 @@ def main():
                 if instances.get(name):
                     instances[name]['process'].terminate()
                     instances.pop(name)
-                print instances
 
 
 if __name__ == "__main__":

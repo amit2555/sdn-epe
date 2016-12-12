@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 
+from contextlib import contextmanager
+from pymongo import MongoClient
+from settings import CONFIG
 import zmq
 
 
@@ -29,3 +32,13 @@ def sub_bind(port):
     s.setsockopt(zmq.SUBSCRIBE, '')
     return s
 
+@contextmanager
+def db_connect(db_name):
+    """Get connection to DB."""
+
+    try:
+        conn = MongoClient(CONFIG["DB_HOST"])
+        db = conn[db_name]
+        yield db
+    finally:
+        conn.close()
